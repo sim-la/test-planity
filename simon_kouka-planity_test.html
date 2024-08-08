@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<hmtl>
+<body>
+  <div id="app"></div>
+  <script>
+    // Planity test
+    // ____________
+    // Simon Kouka
+    // ------------
+    //
+    // Rendering appointments on a timeline with 2 constraints.
+    // This algorithm find the proper width for every appointment
+    // and then packs them in the timeline.
+    // The algorithm is O(n²×log(n)) where n is the number of appointments.
+    //
+    // The algorithm will find clusters of overlapping appointments
+    // and check for every time slot the number of overlapping appointments
+    // for this cluster. The maximum will be the width fraction
+    // of each appointment of the cluster.
+    // Then, for each appointment, the algorithm will find the first free place
+    // among the overlapping appointments already placed.
+
+    const MIN_TIME = '09:00'
+    const MAX_TIME = '21:00'
+
+    main()
+
+
+
+    function main() {
+      const appointments = getInputs()
+
+      const appointmentsTable = getAppointmentsTable(appointments)
+      // displayAppointmentsTable(appointmentsTable)
+
+      const maxConnectedAppointmentsByTime = getMaxConnectedAppointmentsByTime(appointments, appointmentsTable)
+      // displayMaxConnectedAppointmentsByTime(maxConnectedAppointmentsByTime)
+
+      const renderableAppointments = getRenderableAppointments(appointments, appointmentsTable, maxConnectedAppointmentsByTime)
+
+      render(renderableAppointments)
+    }
+
+    function render(renderableAppointments) {
+      const app = document.getElementById('app')
+      renderableAppointments.forEach(appointment => {
+        const div = document.createElement('div')
+        div.style.position = 'absolute'
+        div.style.top = `${appointment.topPc.toFixed(2)}%`
+        div.style.left = `${(appointment.order * appointment.widthPc).toFixed(2)}%`
+        div.style.height = `${appointment.heightPc.toFixed(2)}%`
+        div.style.width = `${appointment.widthPc.toFixed(2)}%`
+        div.style.border = '1px solid black'
+        div.style.boxSizing = 'border-box'
+        div.style.backgroundColor = 'blue'
+        div.style.color = 'white'
+        div.style.borderRadius = '2px'
+        div.style.display = 'flex'
+        div.style.flexDirection = 'column'
+        div.style.justifyContent = 'space-between'
+
+        const startSpan = document.createElement('span')
+        startSpan.textContent = appointment.start
+        div.appendChild(startSpan)
+
+        const idSpan = document.createElement('span')
+        idSpan.style.position = 'absolute'
+        idSpan.style.top = '50%'
+        idSpan.style.translate = '0% -50%'
+        idSpan.style.alignSelf = 'center'
+        idSpan.style.fontWeight = 'bold'
+        idSpan.textContent = appointment.id
+        div.appendChild(idSpan)
+
+        const endSpan = document.createElement('span')
+        endSpan.textContent = appointment.end
+        div.appendChild(endSpan)
+
+        app.appendChild(div)
+      })
+    }
+
+    // Get an array of appointments with their position and size to be rendered
+    // A renderable appointment has the following properties:
+    // - id: the appointment id
+    // - start: the appointment start time
+    // - end: the appointment end time
+    // - order: the appointment order in the same time slot
+    // - topPc: the appointment top position in percentage
+    // - heightPc: the appointment height in percentage
+    // - widthPc: the appointment width in percentage
+    function getRenderableAppointments(appointments, appointmentsTable, maxConnectedAppointmentsByTime) {
+
+      const renderableAppointments = Array.from(
+        { length: appointments.length },
+        _ => null
+      )
+
+      // Sort appointments by start time to prevent having holes in the renderable appointments
+      const sortByStartIndexes = Array.from(
+        { length: appointments.length },
+        (_, i) => i
+      ).sort((k, l) => toMinutes(appointments[k].start) - toMinutes(appointments[l].start))
+
+      const minTime = toMinutes(MIN_TIME)
+      const maxTime = toMinutes(MAX_TIME)
+
+      // For every appointment, check its overlapping appointments
+      // and find a free place among those already placed
+      for (let i = 0; i < appointments.length; i++) {
+        const j = sortByStartIndexes[i]
+        const appointment = appointments[j]
+        const start = toMinutes(appointment.start)
+
+        // Get the orders (places) of the overlapping appointments
+        // And sort them by order to later find the first free place
+        const overlappingAppointmentsUsedOrders = appointmentsTable
+          .slice(start - minTime, start + appointment.duration - minTime)
+          .reduce(
+            (indexes, row) => indexes
+              .concat(
+                row
+                .map((v, k) => v && k !== j ? k : -1)
+                .filter(k => k !== -1 && renderableAppointments[k] !== null)
+              ),
+            []
+          )
+          .sort((k, l) => renderableAppointments[k].order - renderableAppointments[l].order)
+          .map(k => renderableAppointments[k].order)
+
+        // Find the first free place among the overlapping appointments
+        let freePlaceIndex = 0
+        for (let k = 0; k < overlappingAppointmentsUsedOrders.length; k++) {
+          const order = overlappingAppointmentsUsedOrders[k]
+          if (order > freePlaceIndex) {
+            break
+          }
+          freePlaceIndex = order + 1
+        }
+
+        renderableAppointments[j] = {
+          id: appointment.id,
+          start: appointment.start,
+          end: toTime(start + appointment.duration),
+          order: freePlaceIndex,
+          topPc: (start - minTime) / (maxTime - minTime) * 100,
+          heightPc: appointment.duration / (maxTime - minTime) * 100,
+          widthPc: 100 / maxConnectedAppointmentsByTime[start - minTime]
+        }
+      }
+
+      return renderableAppointments
+    }
+
+    // Get a table of appointments with their time slots
+    // An appointments table is a 2D array of booleans
+    // Each row represents a time slot and each column represents an appointment
+    function getAppointmentsTable(appointments) {
+      const appointmentsTable = Array.from(
+        { length: toMinutes(MAX_TIME) - toMinutes(MIN_TIME) },
+        _ => Array.from({ length: appointments.length }, _ => false)
+      )
+
+      appointments.forEach((appointment, i) => {
+        const start = toMinutes(appointment.start)
+        const end = start + appointment.duration
+        for (let j = start; j < end; j++) {
+          appointmentsTable[j - toMinutes(MIN_TIME)][i] = true
+        }
+      })
+
+      return appointmentsTable
+    }
+
+    // Get an array of the maximum number of connected appointments at each time slot
+    // This gives the width fraction of each appointment for the renderable appointments computation
+    // 2 appointments are connected if it exists a path of overlapping appointments between them
+    function getMaxConnectedAppointmentsByTime(appointments, appointmentsTable) {
+      const maxConnectedAppointmentsByTime = Array.from(
+        { length: appointments.length },
+        _ => 0
+      )
+
+      let maxConnectedAppointments = 0
+      let firstConnecterIndex = 0
+      let isConnected = false
+      let presentAppointments = 0
+
+      appointmentsTable.forEach((row, i) => {
+        isConnected = false
+        presentAppointments = 0
+
+        row.forEach((v, j) => {
+          if (v) {
+            presentAppointments++
+            isConnected |= (appointmentsTable.at(i - 1)?.at(j) ?? true)
+          }
+        })
+
+        if (!isConnected || i === appointmentsTable.length - 1) {
+          // If the current time slot is not connected to the previous one
+          // or if it is the last time slot,
+          // then we go back to the last connected time slot
+          // and update the max connected appointments for each time slot
+          const lastIndex = i === appointmentsTable.length - 1 ? i + 1 : i
+          for (let k = firstConnecterIndex; k < lastIndex; k++) {
+            maxConnectedAppointmentsByTime[k] = maxConnectedAppointments
+          }
+
+          firstConnecterIndex = i
+          maxConnectedAppointments = presentAppointments
+        } else {
+          maxConnectedAppointments = Math.max(maxConnectedAppointments, presentAppointments)
+        }
+      })
+
+      return maxConnectedAppointmentsByTime
+    }
+
+    function toMinutes(time) {
+      const [hours, minutes] = time.split(':')
+      return parseInt(hours, 10) * 60 + parseInt(minutes, 10)
+    }
+
+    function toTime(minutes) {
+      const hours = Math.floor(minutes / 60)
+      const mins = minutes % 60
+      return `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
+    }
+
+    function displayAppointmentsTable(appointmentsTable) {
+      console.log(
+        appointmentsTable
+          .slice(
+            appointmentsTable.findIndex(r => r.some(v => v)),
+            appointmentsTable.findLastIndex(r => r.some(v => v)) + 2
+          )
+          .map(
+            (r, i) =>
+              (i % 60 === 0 ?
+                ((toMinutes(MIN_TIME) + i) / 60).toString().padStart(2, '0') :
+                '  '
+              ) +
+              '|' + r.map(v => v ? '#' : ' ').join('')
+          )
+          .join('\n')
+      )
+    }
+
+    function displayMaxConnectedAppointmentsByTime(maxConnectedAppointmentsByTime) {
+      console.log(
+        maxConnectedAppointmentsByTime
+          .slice(
+            maxConnectedAppointmentsByTime.findIndex(f => f > 0),
+            maxConnectedAppointmentsByTime.findLastIndex(f => f > 0) + 2
+          )
+          .map(
+            (f, i) =>
+              (i % 60 === 0 ?
+                ((toMinutes(MIN_TIME) + i) / 60).toString().padStart(2, '0') :
+                '  '
+              ) +
+              '|' + f).join('\n')
+      )
+    }
+
+    function getInputs(simple = false) {
+      return simple ? [
+        { id: 4, start: '12:30', duration: 30 },
+        { id: 1, start: '10:00', duration: 30 },
+        { id: 6, start: '13:30', duration: 30 },
+        { id: 2, start: '11:00', duration: 60 },
+        { id: 5, start: '12:45', duration: 60 },
+        { id: 7, start: '13:30', duration: 15 },
+        { id: 3, start: '11:00', duration: 30 },
+      ] : [
+        {
+          id: 1,
+          start: '17:00',
+          duration: 60
+        },
+        {
+          id: 2,
+          start: '17:00',
+          duration: 120
+        },
+        {
+          id: 3,
+          start: '19:40',
+          duration: 10
+        },
+        {
+          id: 4,
+          start: '15:00',
+          duration: 20
+        },
+        {
+          id: 5,
+          start: '18:00',
+          duration: 60
+        },
+        {
+          id: 6,
+          start: '10:25',
+          duration: 35
+        },
+        {
+          id: 7,
+          start: '10:45',
+          duration: 30
+        },
+        {
+          id: 8,
+          start: '17:00',
+          duration: 60
+        },
+        {
+          id: 9,
+          start: '10:00',
+          duration: 30
+        },
+        {
+          id: 10,
+          start: '11:50',
+          duration: 20
+        },
+        {
+          id: 11,
+          start: '19:00',
+          duration: 60
+        },
+        {
+          id: 12,
+          start: '09:00',
+          duration: 45
+        },
+        {
+          id: 13,
+          start: '14:45',
+          duration: 60
+        },
+        {
+          id: 14,
+          start: '19:20',
+          duration: 10
+        },
+        {
+          id: 15,
+          start: '11:50',
+          duration: 30
+        },
+        {
+          id: 16,
+          start: '11:40',
+          duration: 40
+        },
+        {
+          id: 17,
+          start: '14:00',
+          duration: 30
+        }
+      ]
+    }
+  </script>
+</body>
+</html>
