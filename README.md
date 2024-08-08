@@ -2,8 +2,8 @@
 
 Rendering appointments on a timeline with 2 constraints.
 This algorithm find the proper width for every appointment
-and then packs them in the timeline.
-The algorithm is O(n²×log(n)) where n is the number of appointments.
+and then packs them in the timeline.\
+The algorithm is $O \left( n^2 \cdot \log(n) \right)$ where $n$ is the number of appointments.
 
 ## 🧠 Algorithm overview
 
