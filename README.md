@@ -21,6 +21,13 @@ To be honest I felt like the main focus was on the algorithm
 or frameworks to the mix. Just the algorithm and the rendering.
 Also I wanted to share it easily so one just need a browser and then can run it.
 
+## 🧱 Structure
+
+It is only an index.html file.
+
+The HTML has a script tag with the algorithm and the rendering function.
+The rendering function creates the appointments in the div#appointments.
+
 ## 🚀 How to run
 
 Just open the index.html file in a browser.
